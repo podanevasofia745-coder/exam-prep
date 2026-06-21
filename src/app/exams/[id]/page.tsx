@@ -26,7 +26,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  Settings,
+  Pencil,
   StickyNote,
   Target,
 } from "lucide-react";
@@ -223,8 +223,8 @@ export default function ExamPage() {
           </div>
           <Link href={`/exams/${id}/setup`}>
             <Button variant="secondary" size="sm">
-              <Settings className="mr-1 h-4 w-4" />
-              Настройки
+              <Pencil className="mr-1 h-4 w-4" />
+              Редактировать данные
             </Button>
           </Link>
         </div>
@@ -289,7 +289,7 @@ export default function ExamPage() {
               <p className="text-sm text-slate-600">Темы ещё не добавлены</p>
               <Link href={`/exams/${id}/setup`}>
                 <Button className="mt-3" size="sm">
-                  Настроить экзамен
+                  Редактировать данные
                 </Button>
               </Link>
             </div>
@@ -388,7 +388,7 @@ export default function ExamPage() {
                   <p className="text-slate-500">Темы не добавлены</p>
                   <Link href={`/exams/${id}/setup`}>
                     <Button className="mt-3" size="sm">
-                      Добавить темы
+                      Редактировать данные
                     </Button>
                   </Link>
                 </Card>

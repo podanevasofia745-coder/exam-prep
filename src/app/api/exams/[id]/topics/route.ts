@@ -52,3 +52,40 @@ export async function POST(
     return NextResponse.json({ error: "Failed to create topic" }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const userId = await getAuthUserId(request);
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id: examId } = await params;
+
+  const exam = await prisma.exam.findFirst({
+    where: { id: examId, userId },
+  });
+
+  if (!exam) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.studyTask.deleteMany({
+        where: { examId, status: "PLANNED" },
+      });
+      await tx.topic.deleteMany({ where: { examId } });
+      await tx.exam.update({
+        where: { id: examId },
+        data: { ticketCount: 0 },
+      });
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "Не удалось удалить темы" }, { status: 500 });
+  }
+}

@@ -12,7 +12,15 @@ import { Select } from "@/components/ui/select";
 import { getRecommendedStudyHours } from "@/lib/schedule-generator";
 import { parseTicketsFromFile } from "@/lib/ticket-parser";
 import { DAY_NAMES, EXAM_COLORS, EXAM_FORMATS, formatDuration } from "@/lib/utils";
-import { ArrowRight, Download, FileUp, Loader2, Plus, Trash2, Upload } from "lucide-react";
+import {
+  ArrowRight,
+  Download,
+  FileUp,
+  Loader2,
+  Plus,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { parseISO, startOfDay } from "date-fns";
 
 type PlanningMode = "MANUAL" | "AUTO" | "BOTH";
@@ -68,6 +76,8 @@ export default function ExamSetupPage() {
 
   const [topics, setTopics] = useState<TopicDraft[]>([]);
   const [newTopicTitle, setNewTopicTitle] = useState("");
+  const [bulkStudyTime, setBulkStudyTime] = useState(60);
+  const [clearing, setClearing] = useState(false);
 
   const todayStr = formatDateInput(new Date());
 
@@ -113,10 +123,9 @@ export default function ExamSetupPage() {
       estimatedStudyTime: t.estimatedStudyTime,
       status: "NOT_STARTED",
     }));
-    const daysForCalc =
-      planningMode === "AUTO" && studyDays.length === 0 ? [1, 2, 3, 4, 5, 6] : studyDays;
+    const daysForCalc = studyDays.length > 0 ? studyDays : [1, 2, 3, 4, 5];
     return getRecommendedStudyHours(topicInputs, parseISO(examDate), daysForCalc, startOfDay(new Date()));
-  }, [examDate, topics, studyDays, planningMode]);
+  }, [examDate, topics, studyDays]);
 
   function toggleStudyDay(day: number) {
     setStudyDays((prev) =>
@@ -135,6 +144,37 @@ export default function ExamSetupPage() {
 
   function removeTopic(index: number) {
     setTopics((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function applyBulkStudyTime() {
+    const minutes = Math.max(15, bulkStudyTime);
+    setTopics((prev) => prev.map((t) => ({ ...t, estimatedStudyTime: minutes })));
+  }
+
+  async function clearAllTopics() {
+    if (topics.length === 0) return;
+    if (!window.confirm("Удалить все темы? Расписание по ним тоже будет очищено.")) return;
+
+    setClearing(true);
+    setImportError("");
+    setImportSuccess("");
+
+    const res = await fetch(`/api/exams/${id}/topics`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+
+    setClearing(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setImportError(data.error ?? "Не удалось удалить темы");
+      return;
+    }
+
+    setTopics([]);
+    setTicketCount(0);
+    setImportSuccess("Все темы удалены");
   }
 
   async function handleFileImport(files: FileList | null) {
@@ -208,10 +248,7 @@ export default function ExamSetupPage() {
   const showManualFields = planningMode === "MANUAL" || planningMode === "BOTH";
   const showAutoHint = planningMode === "AUTO" || planningMode === "BOTH";
 
-  const canSave =
-    topics.length > 0 &&
-    examDate &&
-    (planningMode !== "MANUAL" || studyDays.length > 0);
+  const canSave = topics.length > 0 && examDate && studyDays.length > 0;
 
   async function persistTopicsAndSchedule(
     topicList: TopicDraft[]
@@ -220,10 +257,7 @@ export default function ExamSetupPage() {
       return { ok: false, error: "Укажите дату экзамена и добавьте темы" };
     }
 
-    const daysToSave =
-      planningMode === "AUTO" && studyDays.length === 0
-        ? "1,2,3,4,5,6"
-        : studyDays.join(",");
+    const daysToSave = studyDays.join(",");
 
     const topicInputs = topicList.map((t, i) => ({
       id: String(i),
@@ -232,8 +266,7 @@ export default function ExamSetupPage() {
       estimatedStudyTime: t.estimatedStudyTime,
       status: "NOT_STARTED",
     }));
-    const daysForCalc =
-      planningMode === "AUTO" && studyDays.length === 0 ? [1, 2, 3, 4, 5, 6] : studyDays;
+    const daysForCalc = studyDays;
     const hoursForSave =
       planningMode === "AUTO" && examDate
         ? getRecommendedStudyHours(
@@ -311,9 +344,9 @@ export default function ExamSetupPage() {
     <div className="min-h-screen bg-gradient-to-b from-sky-50/50 via-white to-emerald-50/30">
       <Navbar />
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        <h1 className="text-2xl font-bold text-slate-800">Настройка экзамена</h1>
+        <h1 className="text-2xl font-bold text-slate-800">Редактирование данных</h1>
         <p className="mt-1 text-slate-500">
-          Заполните параметры и добавьте темы для генерации расписания
+          Измените параметры экзамена, дни подготовки и список тем
         </p>
 
         <div className="mt-8 space-y-5">
@@ -426,34 +459,38 @@ export default function ExamSetupPage() {
               </div>
             )}
 
-            {showManualFields && (
-              <div className="mt-4 space-y-4">
-                <div className="w-full">
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-sky-700">
-                    Дни недели
-                    {planningMode === "BOTH" && (
-                      <span className="ml-1 font-normal normal-case text-slate-400">
-                        (необязательно — по умолчанию пн–сб)
-                      </span>
-                    )}
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {DAY_NAMES.map((name, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => toggleStudyDay(idx)}
-                        className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${
-                          studyDays.includes(idx)
-                            ? "bg-sky-500 text-white shadow-sm"
-                            : "bg-sky-50 text-sky-600 hover:bg-sky-100"
-                        }`}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </div>
+            <div className="mt-4 space-y-4">
+              <div className="w-full">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-sky-700">
+                  Дни подготовки
+                </span>
+                <p className="mb-2 text-xs text-slate-500">
+                  Выберите дни недели, когда вы можете заниматься
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {DAY_NAMES.map((name, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => toggleStudyDay(idx)}
+                      className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${
+                        studyDays.includes(idx)
+                          ? "bg-sky-500 text-white shadow-sm"
+                          : "bg-sky-50 text-sky-600 hover:bg-sky-100"
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
                 </div>
+                {studyDays.length === 0 && (
+                  <p className="mt-2 text-xs text-amber-600">
+                    Выберите хотя бы один день для генерации расписания
+                  </p>
+                )}
+              </div>
+
+              {showManualFields && (
                 <div className="grid grid-cols-2 gap-3">
                   <Input
                     label="Начало занятий"
@@ -468,20 +505,57 @@ export default function ExamSetupPage() {
                     onChange={(e) => setStudyTimeEnd(e.target.value)}
                   />
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </Card>
 
           <Card className="!p-4 sm:!p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-sky-700">Темы</h2>
-              {topics.length > 0 && (
-                <Button type="button" variant="secondary" size="sm" onClick={exportTickets}>
-                  <Download className="mr-1 h-4 w-4" />
-                  Экспорт
-                </Button>
-              )}
+              <div className="flex flex-wrap gap-2">
+                {topics.length > 0 && (
+                  <>
+                    <Button type="button" variant="secondary" size="sm" onClick={exportTickets}>
+                      <Download className="mr-1 h-4 w-4" />
+                      Экспорт
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={clearAllTopics}
+                      disabled={clearing}
+                    >
+                      {clearing ? (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="mr-1 h-4 w-4 text-red-400" />
+                      )}
+                      Очистить все темы
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
+
+            {topics.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border-2 border-sky-100 bg-sky-50/30 p-3">
+                <div className="min-w-[120px] flex-1">
+                  <Input
+                    label="Время на все темы"
+                    type="number"
+                    min={15}
+                    step={15}
+                    value={bulkStudyTime}
+                    onChange={(e) => setBulkStudyTime(Number(e.target.value))}
+                  />
+                </div>
+                <Button type="button" variant="secondary" size="sm" onClick={applyBulkStudyTime}>
+                  Применить ко всем
+                </Button>
+                <span className="pb-2 text-xs text-slate-500">минут на тему</span>
+              </div>
+            )}
 
             <div
               className="mb-4 rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/30 p-5 text-center"
