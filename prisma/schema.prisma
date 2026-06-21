@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime    @default(now())
+  exams        Exam[]
+  studyTasks   StudyTask[]
+  schedules    Schedule[]
+}
+
+model Exam {
+  id              String      @id @default(cuid())
+  userId          String
+  title           String      @default("Новый экзамен")
+  examDate        DateTime
+  examFormat      String      @default("WRITTEN")
+  ticketCount     Int         @default(0)
+  dailyStudyHours Float       @default(2)
+  priority        Int         @default(3)
+  color           String      @default("#6366f1")
+  studyDays       String      @default("1,2,3,4,5")
+  studyTimeStart  String      @default("09:00")
+  studyTimeEnd    String      @default("21:00")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topics          Topic[]
+  studyTasks      StudyTask[]
+  schedules       Schedule[]
+}
+
+model Topic {
+  id                 String      @id @default(cuid())
+  examId             String
+  title              String
+  difficulty         Int         @default(3)
+  estimatedStudyTime Int         @default(60)
+  status             String      @default("NOT_STARTED")
+  notes              String      @default("")
+  confidence         Int?
+  orderIndex         Int         @default(0)
+  exam               Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studyTasks         StudyTask[]
+}
+
+model StudyTask {
+  id        String   @id @default(cuid())
+  examId    String
+  topicId   String?
+  userId    String
+  date      DateTime
+  startTime String?
+  endTime   String?
+  taskType  String
+  status    String   @default("PLANNED")
+  duration  Int      @default(60)
+  title     String   @default("")
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  topic     Topic?   @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Schedule {
+  id        String   @id @default(cuid())
+  userId    String
+  examId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+}
