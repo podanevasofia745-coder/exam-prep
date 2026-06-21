@@ -237,7 +237,7 @@ export function generateSchedule(
     const duration = Math.round(
       topic.estimatedStudyTime * getDifficultyMultiplier(topic.difficulty)
     );
-    const slot = findSlot(studyDaysForNew[0], duration, studyDaysForNew);
+    const slot = findSlot(studyDaysForNew[0], duration, availableDays);
     if (slot) {
       addTask({
         topicId: topic.id,

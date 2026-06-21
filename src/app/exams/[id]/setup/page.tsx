@@ -52,6 +52,7 @@ export default function ExamSetupPage() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const [importSuccess, setImportSuccess] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   const [title, setTitle] = useState("");
   const [examDate, setExamDate] = useState("");
@@ -160,15 +161,27 @@ export default function ExamSetupPage() {
         return;
       }
 
-      setTopics(
-        allTickets.map((t) => ({
-          title: t.title,
-          difficulty: 3,
-          estimatedStudyTime: 60,
-        }))
-      );
+      setTopics(allTickets);
       setTicketCount(allTickets.length);
-      setImportSuccess(`Загружено тем: ${allTickets.length}`);
+
+      if (!examDate) {
+        setImportSuccess(
+          `Загружено тем: ${allTickets.length}. Укажите дату экзамена и нажмите «Сохранить и создать расписание».`
+        );
+        return;
+      }
+
+      setImportSuccess(`Загружено тем: ${allTickets.length}. Создаём расписание...`);
+      const result = await persistTopicsAndSchedule(allTickets);
+
+      if (result.ok) {
+        setImportSuccess(
+          `Готово: ${allTickets.length} тем, ${result.taskCount} задач в расписании`
+        );
+      } else {
+        setImportError(result.error ?? "Не удалось создать расписание");
+        setImportSuccess(`Загружено тем: ${allTickets.length}`);
+      }
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "Ошибка импорта");
     } finally {
@@ -196,16 +209,38 @@ export default function ExamSetupPage() {
     examDate &&
     (planningMode !== "MANUAL" || studyDays.length > 0);
 
-  async function saveAndGenerate() {
-    if (!canSave) return;
-    setSaving(true);
+  async function persistTopicsAndSchedule(
+    topicList: TopicDraft[]
+  ): Promise<{ ok: boolean; error?: string; taskCount?: number }> {
+    if (!examDate || topicList.length === 0) {
+      return { ok: false, error: "Укажите дату экзамена и добавьте темы" };
+    }
 
     const daysToSave =
       planningMode === "AUTO" && studyDays.length === 0
         ? "1,2,3,4,5,6"
         : studyDays.join(",");
 
-    await fetch(`/api/exams/${id}`, {
+    const topicInputs = topicList.map((t, i) => ({
+      id: String(i),
+      title: t.title,
+      difficulty: t.difficulty,
+      estimatedStudyTime: t.estimatedStudyTime,
+      status: "NOT_STARTED",
+    }));
+    const daysForCalc =
+      planningMode === "AUTO" && studyDays.length === 0 ? [1, 2, 3, 4, 5, 6] : studyDays;
+    const hoursForSave =
+      planningMode === "AUTO" && examDate
+        ? getRecommendedStudyHours(
+            topicInputs,
+            parseISO(examDate),
+            daysForCalc,
+            startOfDay(new Date())
+          ).hoursPerDay
+        : dailyStudyHours;
+
+    const patchRes = await fetch(`/api/exams/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -213,11 +248,8 @@ export default function ExamSetupPage() {
         title,
         examDate,
         examFormat,
-        ticketCount: ticketCount || topics.length,
-        dailyStudyHours:
-          planningMode === "AUTO" && recommendation
-            ? recommendation.hoursPerDay
-            : dailyStudyHours,
+        ticketCount: ticketCount || topicList.length,
+        dailyStudyHours: hoursForSave,
         priority,
         color,
         planningMode,
@@ -227,6 +259,11 @@ export default function ExamSetupPage() {
       }),
     });
 
+    if (!patchRes.ok) {
+      const data = await patchRes.json().catch(() => ({}));
+      return { ok: false, error: data.error ?? "Не удалось сохранить настройки" };
+    }
+
     const existingRes = await fetch(`/api/exams/${id}`, { credentials: "include" });
     const existing = existingRes.ok ? await existingRes.json() : { topics: [] };
 
@@ -234,27 +271,52 @@ export default function ExamSetupPage() {
       await fetch(`/api/topics/${old.id}`, { method: "DELETE", credentials: "include" });
     }
 
-    for (const topic of topics) {
-      await fetch(`/api/exams/${id}/topics`, {
+    for (const topic of topicList) {
+      const res = await fetch(`/api/exams/${id}/topics`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(topic),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { ok: false, error: data.error ?? `Не удалось сохранить тему «${topic.title}»` };
+      }
     }
-
-    setSaving(false);
-    setGenerating(true);
 
     const schedRes = await fetch(`/api/exams/${id}/schedule`, {
       method: "POST",
       credentials: "include",
     });
-    setGenerating(false);
 
-    if (schedRes.ok) {
-      router.push(`/exams/${id}`);
+    const schedData = await schedRes.json().catch(() => ({}));
+
+    if (!schedRes.ok) {
+      return {
+        ok: false,
+        error: schedData.error ?? "Не удалось создать расписание",
+      };
     }
+
+    return { ok: true, taskCount: schedData.count ?? schedData.tasks?.length ?? 0 };
+  }
+
+  async function saveAndGenerate() {
+    if (!canSave) return;
+    setSaving(true);
+    setSaveError("");
+
+    const result = await persistTopicsAndSchedule(topics);
+    setSaving(false);
+
+    if (!result.ok) {
+      setSaveError(result.error ?? "Ошибка сохранения");
+      return;
+    }
+
+    setGenerating(true);
+    router.push(`/exams/${id}`);
+    setGenerating(false);
   }
 
   if (loading) {
@@ -559,6 +621,10 @@ export default function ExamSetupPage() {
               </div>
             )}
           </Card>
+
+          {saveError && (
+            <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{saveError}</p>
+          )}
 
           <Button
             className="w-full"

@@ -44,6 +44,8 @@ export default function SchedulePage() {
   const [view, setView] = useState<ViewMode>("week");
   const [tasks, setTasks] = useState<ScheduleTask[]>([]);
   const [conflicts, setConflicts] = useState<string[]>([]);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const [nextTaskDate, setNextTaskDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -57,6 +59,8 @@ export default function SchedulePage() {
       const data = await res.json();
       setTasks(data.tasks);
       setConflicts(data.conflicts);
+      setTotalTasks(data.totalTasks ?? data.tasks.length);
+      setNextTaskDate(data.nextTaskDate ?? null);
     }
     setLoading(false);
   }, [view, currentDate]);
@@ -153,10 +157,27 @@ export default function SchedulePage() {
             <p className="text-slate-400">Загрузка...</p>
           ) : tasks.length === 0 ? (
             <Card className="text-center">
-              <p className="text-slate-500">Нет задач на выбранный период</p>
-              <p className="mt-1 text-sm text-slate-400">
-                Создайте экзамен и сгенерируйте расписание
-              </p>
+              {totalTasks > 0 && nextTaskDate ? (
+                <>
+                  <p className="text-slate-600">
+                    На эту неделю задач нет, но всего в расписании — {totalTasks}
+                  </p>
+                  <Button
+                    className="mt-4"
+                    variant="secondary"
+                    onClick={() => setCurrentDate(new Date(nextTaskDate))}
+                  >
+                    Перейти к ближайшим задачам
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-slate-500">Нет задач на выбранный период</p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Загрузите темы в настройках экзамена — расписание создастся автоматически
+                  </p>
+                </>
+              )}
             </Card>
           ) : view === "day" ? (
             <DayCalendarView

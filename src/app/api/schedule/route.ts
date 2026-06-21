@@ -52,5 +52,22 @@ export async function GET(request: NextRequest) {
     }))
   );
 
-  return NextResponse.json({ tasks, conflicts, start, end });
+  const totalTasks = await prisma.studyTask.count({
+    where: { userId, exam: { archived: false } },
+  });
+
+  const nextTask = await prisma.studyTask.findFirst({
+    where: { userId, exam: { archived: false }, date: { gte: startOfDay(new Date()) } },
+    orderBy: { date: "asc" },
+    select: { date: true },
+  });
+
+  return NextResponse.json({
+    tasks,
+    conflicts,
+    start,
+    end,
+    totalTasks,
+    nextTaskDate: nextTask?.date ?? null,
+  });
 }

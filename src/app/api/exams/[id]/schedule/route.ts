@@ -50,6 +50,16 @@ export async function POST(
     }
   );
 
+  if (generated.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Не удалось построить расписание. Проверьте дату экзамена (она должна быть в будущем) и дни занятий.",
+      },
+      { status: 400 }
+    );
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.studyTask.deleteMany({
       where: { examId, status: "PLANNED" },
