@@ -1,0 +1,11 @@
+{
+  "buildCommand": "prisma generate && next build",
+  "functions": {
+    "src/app/api/import-tickets/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/exams/[id]/setup-sync/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}
