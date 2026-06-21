@@ -28,6 +28,7 @@
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.3.0",
     "tesseract.js": "^7.0.0",
+    "unpdf": "^1.6.2",
     "word-extractor": "^1.0.4",
     "zod": "^3.25.51"
   },

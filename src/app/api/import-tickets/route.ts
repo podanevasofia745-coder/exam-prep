@@ -4,6 +4,9 @@ import { detectDocumentKind } from "@/lib/document-types";
 import { parseTicketsFromText } from "@/lib/ticket-parser";
 import { getAuthUserId } from "@/lib/session";
 
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 export async function POST(request: NextRequest) {
@@ -54,6 +57,9 @@ export async function POST(request: NextRequest) {
     console.error("Import tickets error:", error);
     const message =
       error instanceof Error ? error.message : "Не удалось обработать документ";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: message.includes("Не удалось") ? message : `Не удалось обработать документ: ${message}` },
+      { status: 500 }
+    );
   }
 }

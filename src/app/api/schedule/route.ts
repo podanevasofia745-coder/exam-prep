@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { startOfDay, endOfDay, addDays } from "date-fns";
+import { startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
 import { detectScheduleConflicts } from "@/lib/schedule-generator";
 
 export async function GET(request: NextRequest) {
@@ -18,15 +18,15 @@ export async function GET(request: NextRequest) {
   let start: Date;
   let end: Date;
 
-  if (view === "today") {
+  if (view === "day") {
     start = startOfDay(baseDate);
     end = endOfDay(baseDate);
   } else if (view === "month") {
     start = startOfDay(new Date(baseDate.getFullYear(), baseDate.getMonth(), 1));
     end = endOfDay(new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0));
   } else {
-    start = startOfDay(baseDate);
-    end = endOfDay(addDays(baseDate, 6));
+    start = startOfWeek(baseDate, { weekStartsOn: 1 });
+    end = endOfWeek(baseDate, { weekStartsOn: 1 });
   }
 
   const tasks = await prisma.studyTask.findMany({
