@@ -14,6 +14,7 @@ const updateSchema = z.object({
   studyDays: z.string().optional(),
   studyTimeStart: z.string().optional(),
   studyTimeEnd: z.string().optional(),
+  planningMode: z.enum(["MANUAL", "AUTO", "BOTH"]).optional(),
   archived: z.boolean().optional(),
 });
 

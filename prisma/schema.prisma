@@ -32,6 +32,7 @@ model Exam {
   studyDays       String      @default("1,2,3,4,5")
   studyTimeStart  String      @default("09:00")
   studyTimeEnd    String      @default("21:00")
+  planningMode    String      @default("AUTO")
   archived        Boolean     @default(false)
   archivedAt      DateTime?
   createdAt       DateTime    @default(now())

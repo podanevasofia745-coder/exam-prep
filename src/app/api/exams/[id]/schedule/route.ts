@@ -30,7 +30,7 @@ export async function POST(
     );
   }
 
-  const studyDays = exam.studyDays.split(",").map(Number);
+  const studyDays = exam.studyDays ? exam.studyDays.split(",").map(Number).filter((n) => !Number.isNaN(n)) : [];
 
   const generated = generateSchedule(
     exam.topics.map((t) => ({
@@ -46,6 +46,7 @@ export async function POST(
       studyDays,
       studyTimeStart: exam.studyTimeStart,
       examFormat: exam.examFormat,
+      planningMode: (exam.planningMode as "MANUAL" | "AUTO" | "BOTH") ?? "AUTO",
     }
   );
 

@@ -21,6 +21,7 @@ export interface ExamSettings {
   studyDays: number[];
   studyTimeStart: string;
   examFormat: string;
+  planningMode?: "MANUAL" | "AUTO" | "BOTH";
 }
 
 export interface GeneratedTask {
@@ -82,13 +83,80 @@ function getDifficultyMultiplier(difficulty: number): number {
   return 0.7 + difficulty * 0.15;
 }
 
+function estimateTotalStudyMinutes(topics: TopicInput[]): number {
+  let total = 0;
+  for (const topic of topics) {
+    if (topic.status === "STUDIED" || topic.status === "REVIEWED") continue;
+    const study = Math.round(
+      topic.estimatedStudyTime * getDifficultyMultiplier(topic.difficulty)
+    );
+    const reviews = Math.max(
+      20,
+      Math.round(topic.estimatedStudyTime * 0.4 * getDifficultyMultiplier(topic.difficulty))
+    );
+    total += study + reviews * 2;
+  }
+  return total;
+}
+
+const DEFAULT_STUDY_DAYS = [1, 2, 3, 4, 5, 6];
+
+export function resolveScheduleSettings(
+  topics: TopicInput[],
+  settings: ExamSettings,
+  startDate: Date = startOfDay(new Date())
+): { dailyStudyHours: number; studyDays: number[] } {
+  const mode = settings.planningMode ?? "AUTO";
+  const examDate = startOfDay(settings.examDate);
+  let studyDays =
+    settings.studyDays.length > 0 ? settings.studyDays : [...DEFAULT_STUDY_DAYS];
+  let dailyStudyHours = settings.dailyStudyHours || 2;
+
+  if (mode === "AUTO" || mode === "BOTH") {
+    const availableDays = getAvailableDays(startDate, examDate, studyDays);
+    const dayCount = Math.max(1, availableDays.length);
+    const totalMinutes = estimateTotalStudyMinutes(topics);
+    const calculatedHours = Math.ceil((totalMinutes / dayCount / 60) * 10) / 10;
+    const clamped = Math.min(12, Math.max(0.5, calculatedHours));
+
+    if (mode === "AUTO") {
+      dailyStudyHours = clamped;
+      if (settings.studyDays.length === 0) {
+        studyDays = [...DEFAULT_STUDY_DAYS];
+      }
+    } else {
+      dailyStudyHours = Math.max(dailyStudyHours, clamped);
+    }
+  }
+
+  return { dailyStudyHours, studyDays };
+}
+
+export function getRecommendedStudyHours(
+  topics: TopicInput[],
+  examDate: Date,
+  studyDays: number[],
+  startDate: Date = startOfDay(new Date())
+): { hoursPerDay: number; totalMinutes: number; studyDayCount: number } {
+  const days = studyDays.length > 0 ? studyDays : DEFAULT_STUDY_DAYS;
+  const availableDays = getAvailableDays(startDate, examDate, days);
+  const dayCount = Math.max(1, availableDays.length);
+  const totalMinutes = estimateTotalStudyMinutes(topics);
+  const hoursPerDay = Math.min(12, Math.max(0.5, Math.ceil((totalMinutes / dayCount / 60) * 10) / 10));
+
+  return { hoursPerDay, totalMinutes, studyDayCount: dayCount };
+}
+
 export function generateSchedule(
   topics: TopicInput[],
   settings: ExamSettings,
   startDate: Date = startOfDay(new Date())
 ): GeneratedTask[] {
   const examDate = startOfDay(settings.examDate);
-  const availableDays = getAvailableDays(startDate, examDate, settings.studyDays);
+  const resolved = resolveScheduleSettings(topics, settings, startDate);
+  const dailyMinutes = resolved.dailyStudyHours * 60;
+  const availableDays = getAvailableDays(startDate, examDate, resolved.studyDays);
+  const finalReviewDays = Math.min(2, Math.max(1, Math.floor(availableDays.length * 0.1)));
 
   if (availableDays.length === 0 || topics.length === 0) {
     return [];
@@ -96,8 +164,6 @@ export function generateSchedule(
 
   const totalCalendarDays = differenceInCalendarDays(examDate, startDate);
   const reviewIntervals = getReviewIntervals(totalCalendarDays);
-  const dailyMinutes = settings.dailyStudyHours * 60;
-  const finalReviewDays = Math.min(2, Math.max(1, Math.floor(availableDays.length * 0.1)));
 
   const unstudiedTopics = topics.filter((t) => t.status === "NOT_STARTED");
   const studiedTopics = topics.filter((t) => t.status !== "NOT_STARTED");
@@ -213,7 +279,7 @@ export function generateSchedule(
     for (const interval of reviewIntervals) {
       const reviewDate = addDays(firstStudyDate, interval);
       if (!isBefore(reviewDate, examDate) && !isSameDay(reviewDate, examDate)) continue;
-      if (!isStudyDay(reviewDate, settings.studyDays)) continue;
+      if (!isStudyDay(reviewDate, resolved.studyDays)) continue;
 
       const slot = findSlot(reviewDate, reviewDuration, availableDays);
       if (slot) {
