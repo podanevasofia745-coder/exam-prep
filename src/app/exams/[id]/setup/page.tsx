@@ -51,6 +51,7 @@ export default function ExamSetupPage() {
   const [generating, setGenerating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
+  const [importSuccess, setImportSuccess] = useState("");
 
   const [title, setTitle] = useState("");
   const [examDate, setExamDate] = useState("");
@@ -139,6 +140,7 @@ export default function ExamSetupPage() {
     if (!files?.length) return;
     setImporting(true);
     setImportError("");
+    setImportSuccess("");
 
     try {
       const allTickets: TopicDraft[] = [];
@@ -158,18 +160,15 @@ export default function ExamSetupPage() {
         return;
       }
 
-      setTopics((prev) => {
-        const merged = [...prev];
-        const seen = new Set(prev.map((t) => t.title.toLowerCase()));
-        for (const t of allTickets) {
-          if (!seen.has(t.title.toLowerCase())) {
-            seen.add(t.title.toLowerCase());
-            merged.push(t);
-          }
-        }
-        return merged;
-      });
-      setTicketCount((c) => Math.max(c, allTickets.length));
+      setTopics(
+        allTickets.map((t) => ({
+          title: t.title,
+          difficulty: 3,
+          estimatedStudyTime: 60,
+        }))
+      );
+      setTicketCount(allTickets.length);
+      setImportSuccess(`Загружено тем: ${allTickets.length}`);
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "Ошибка импорта");
     } finally {
@@ -484,6 +483,9 @@ export default function ExamSetupPage() {
                     Выбрать файл
                   </Button>
                 </>
+              )}
+              {importSuccess && (
+                <p className="mt-2 text-sm text-emerald-600">{importSuccess}</p>
               )}
               {importError && (
                 <p className="mt-2 text-sm text-red-500">{importError}</p>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractTextFromDocument } from "@/lib/document-extractor";
 import { detectDocumentKind } from "@/lib/document-types";
-import { parseTicketsFromText } from "@/lib/ticket-parser";
+import { parseTicketsFromText, parseTicketsFromTextDetailed } from "@/lib/ticket-parser";
 import { getAuthUserId } from "@/lib/session";
 
 export const maxDuration = 60;
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const text = await extractTextFromDocument(buffer, file.name, file.type);
-    const tickets = parseTicketsFromText(text);
+    const { tickets, skippedLines } = parseTicketsFromTextDetailed(text);
 
     if (tickets.length === 0) {
       return NextResponse.json(
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ tickets, count: tickets.length });
+    return NextResponse.json({ tickets, count: tickets.length, skippedLines });
   } catch (error) {
     console.error("Import tickets error:", error);
     const message =
