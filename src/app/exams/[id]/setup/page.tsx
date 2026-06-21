@@ -454,7 +454,7 @@ export default function ExamSetupPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.csv,.md,text/plain,image/jpeg,image/png,image/webp"
+                accept=".txt,.csv,.md,.pdf,.doc,.docx,text/plain,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp"
                 multiple
                 className="hidden"
                 onChange={(e) => handleFileImport(e.target.files)}
@@ -468,10 +468,10 @@ export default function ExamSetupPage() {
                 <>
                   <FileUp className="mx-auto h-8 w-8 text-sky-400" />
                   <p className="mt-2 text-sm font-medium text-slate-700">
-                    Импорт билетов из файла или фото
+                    Импорт билетов из файла, Word или PDF
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    TXT, CSV или фото списка (JPG, PNG). Каждый билет — отдельная строка
+                    PDF, DOC, DOCX, TXT, CSV или фото списка. Каждый билет — отдельная строка
                   </p>
                   <Button
                     type="button"

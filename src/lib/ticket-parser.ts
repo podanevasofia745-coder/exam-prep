@@ -1,3 +1,5 @@
+import { detectDocumentKind, isDocumentFile } from "@/lib/document-types";
+
 export interface ParsedTicket {
   title: string;
   number?: number;
@@ -92,8 +94,31 @@ export async function extractTextFromImage(file: File): Promise<string> {
   }
 }
 
+async function parseDocumentViaApi(file: File): Promise<ParsedTicket[]> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/import-tickets", {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.error ?? "Не удалось обработать документ");
+  }
+
+  return data.tickets as ParsedTicket[];
+}
+
 export async function parseTicketsFromFile(file: File): Promise<ParsedTicket[]> {
   const name = file.name.toLowerCase();
+
+  if (isDocumentFile(file)) {
+    return parseDocumentViaApi(file);
+  }
 
   if (file.type.startsWith("image/")) {
     const text = await extractTextFromImage(file);
@@ -111,6 +136,6 @@ export async function parseTicketsFromFile(file: File): Promise<ParsedTicket[]> 
   }
 
   throw new Error(
-    "Поддерживаются файлы .txt, .csv, .md и изображения (JPG, PNG). Для Word/PDF сохраните как текст."
+    "Поддерживаются PDF, Word (.doc, .docx), TXT, CSV и изображения (JPG, PNG)"
   );
 }
