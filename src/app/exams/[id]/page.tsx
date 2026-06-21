@@ -19,6 +19,7 @@ import {
   TOPIC_STATUSES,
 } from "@/lib/utils";
 import { calculateProgress } from "@/lib/schedule-generator";
+import { downloadIcsExport } from "@/lib/ics-export";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -26,6 +27,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  Download,
   Pencil,
   StickyNote,
   Target,
@@ -94,6 +96,7 @@ export default function ExamPage() {
   const [error, setError] = useState("");
   const [noteTopicId, setNoteTopicId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const loadExam = useCallback(async () => {
     setLoading(true);
@@ -153,6 +156,12 @@ export default function ExamPage() {
       credentials: "include",
     });
     loadExam();
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    await downloadIcsExport(id);
+    setExporting(false);
   }
 
   if (loading) {
@@ -448,14 +457,25 @@ export default function ExamPage() {
 
           {tab === "schedule" && (
             <div className="space-y-6">
-              <div className="flex justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm text-slate-500">
                   {exam.studyTasks.length} задач в расписании
                 </p>
-                <Button variant="secondary" size="sm" onClick={regenerateSchedule}>
-                  <Calendar className="mr-1 h-4 w-4" />
-                  Пересчитать
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleExport}
+                    disabled={exporting || exam.studyTasks.length === 0}
+                  >
+                    <Download className="mr-1 h-4 w-4" />
+                    {exporting ? "Экспорт..." : "В календарь"}
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={regenerateSchedule}>
+                    <Calendar className="mr-1 h-4 w-4" />
+                    Пересчитать
+                  </Button>
+                </div>
               </div>
               {Object.keys(tasksByDate).length === 0 ? (
                 <Card>

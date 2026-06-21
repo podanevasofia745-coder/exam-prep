@@ -20,8 +20,10 @@ export interface ExamSettings {
   dailyStudyHours: number;
   studyDays: number[];
   studyTimeStart: string;
+  studyTimeEnd?: string;
   examFormat: string;
   planningMode?: "MANUAL" | "AUTO" | "BOTH";
+  busySlots?: Array<{ date: Date; startTime: string; endTime: string }>;
 }
 
 export interface GeneratedTask {
@@ -77,6 +79,73 @@ function getReviewIntervals(totalDays: number): number[] {
   if (totalDays <= 7) return [1, 2];
   if (totalDays <= 14) return COMPRESSED_REVIEW_INTERVALS;
   return STANDARD_REVIEW_INTERVALS;
+}
+
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
+function overlapsBusy(
+  startTime: string,
+  endTime: string,
+  busyOnDay: Array<{ startTime: string; endTime: string }>
+): boolean {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  return busyOnDay.some((slot) => {
+    const busyStart = timeToMinutes(slot.startTime);
+    const busyEnd = timeToMinutes(slot.endTime);
+    return start < busyEnd && busyStart < end;
+  });
+}
+
+function findFreeSlotOnDay(
+  day: Date,
+  duration: number,
+  usedMinutes: number,
+  settings: ExamSettings,
+  busyOnDay: Array<{ startTime: string; endTime: string }>
+): { startTime: string; endTime: string } | null {
+  const studyEnd = settings.studyTimeEnd ?? "21:00";
+  let cursor = addMinutesToTime(settings.studyTimeStart, usedMinutes);
+  const maxAttempts = 48;
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const endTime = addMinutesToTime(cursor, duration);
+    if (timeToMinutes(endTime) > timeToMinutes(studyEnd)) {
+      return null;
+    }
+
+    if (!overlapsBusy(cursor, endTime, busyOnDay)) {
+      return { startTime: cursor, endTime };
+    }
+
+    const blocker = busyOnDay.find(
+      (slot) => cursor < slot.endTime && slot.startTime < endTime
+    );
+    cursor = blocker ? blocker.endTime : addMinutesToTime(cursor, 15);
+  }
+
+  return null;
+}
+
+function busyMinutesOnDay(
+  busyOnDay: Array<{ startTime: string; endTime: string }>,
+  studyStart: string,
+  studyEnd: string
+): number {
+  const windowStart = timeToMinutes(studyStart);
+  const windowEnd = timeToMinutes(studyEnd);
+  let total = 0;
+
+  for (const slot of busyOnDay) {
+    const start = Math.max(timeToMinutes(slot.startTime), windowStart);
+    const end = Math.min(timeToMinutes(slot.endTime), windowEnd);
+    if (end > start) total += end - start;
+  }
+
+  return total;
 }
 
 function getDifficultyMultiplier(difficulty: number): number {
@@ -173,8 +242,18 @@ export function generateSchedule(
   const dayLoad: Map<string, number> = new Map();
 
   const getDayKey = (d: Date) => format(d, "yyyy-MM-dd");
-  const getRemainingMinutes = (day: Date) =>
-    dailyMinutes - (dayLoad.get(getDayKey(day)) ?? 0);
+  const studyEnd = settings.studyTimeEnd ?? "21:00";
+  const getBusyOnDay = (day: Date) => {
+    const key = getDayKey(day);
+    return (settings.busySlots ?? [])
+      .filter((slot) => getDayKey(slot.date) === key)
+      .map((slot) => ({ startTime: slot.startTime, endTime: slot.endTime }));
+  };
+  const getRemainingMinutes = (day: Date) => {
+    const busy = busyMinutesOnDay(getBusyOnDay(day), settings.studyTimeStart, studyEnd);
+    const capacity = Math.max(0, dailyMinutes - busy);
+    return capacity - (dayLoad.get(getDayKey(day)) ?? 0);
+  };
 
   const addTask = (task: GeneratedTask) => {
     const key = getDayKey(task.date);
@@ -197,9 +276,10 @@ export function generateSchedule(
       const remaining = getRemainingMinutes(day);
       if (remaining >= duration) {
         const used = dayLoad.get(getDayKey(day)) ?? 0;
-        const startTime = addMinutesToTime(settings.studyTimeStart, used);
-        const endTime = addMinutesToTime(startTime, duration);
-        return { day, startTime, endTime };
+        const slot = findFreeSlotOnDay(day, duration, used, settings, getBusyOnDay(day));
+        if (slot) {
+          return { day, startTime: slot.startTime, endTime: slot.endTime };
+        }
       }
     }
     return null;

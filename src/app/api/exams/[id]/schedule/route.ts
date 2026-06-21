@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { generateSchedule } from "@/lib/schedule-generator";
+import { getUserBusySlots } from "@/lib/calendar-busy";
+import { addDays } from "date-fns";
 
 export async function POST(
   request: NextRequest,
@@ -32,6 +34,12 @@ export async function POST(
 
   const studyDays = exam.studyDays ? exam.studyDays.split(",").map(Number).filter((n) => !Number.isNaN(n)) : [];
 
+  const busySlots = await getUserBusySlots(
+    userId,
+    new Date(),
+    addDays(exam.examDate, 1)
+  );
+
   const generated = generateSchedule(
     exam.topics.map((t) => ({
       id: t.id,
@@ -45,8 +53,10 @@ export async function POST(
       dailyStudyHours: exam.dailyStudyHours,
       studyDays,
       studyTimeStart: exam.studyTimeStart,
+      studyTimeEnd: exam.studyTimeEnd,
       examFormat: exam.examFormat,
       planningMode: (exam.planningMode as "MANUAL" | "AUTO" | "BOTH") ?? "AUTO",
+      busySlots,
     }
   );
 

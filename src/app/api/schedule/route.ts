@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, format } from "date-fns";
 import { detectScheduleConflicts } from "@/lib/schedule-generator";
 
 export async function GET(request: NextRequest) {
@@ -62,6 +62,15 @@ export async function GET(request: NextRequest) {
     select: { date: true },
   });
 
+  const externalEvents = await prisma.externalCalendarEvent.findMany({
+    where: {
+      userId,
+      startAt: { lte: end },
+      endAt: { gte: start },
+    },
+    orderBy: { startAt: "asc" },
+  });
+
   return NextResponse.json({
     tasks,
     conflicts,
@@ -69,5 +78,22 @@ export async function GET(request: NextRequest) {
     end,
     totalTasks,
     nextTaskDate: nextTask?.date ?? null,
+    externalEvents: externalEvents.map((event) => ({
+      id: event.id,
+      title: event.title,
+      date: event.startAt.toISOString(),
+      startTime: event.allDay ? null : format(event.startAt, "HH:mm"),
+      endTime: event.allDay ? null : format(event.endAt, "HH:mm"),
+      allDay: event.allDay,
+      source: event.source,
+    })),
+    calendarConnected: Boolean(
+      (
+        await prisma.user.findUnique({
+          where: { id: userId },
+          select: { calendarIcsUrl: true },
+        })
+      )?.calendarIcsUrl
+    ),
   });
 }

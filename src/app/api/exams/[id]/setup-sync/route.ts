@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { generateSchedule } from "@/lib/schedule-generator";
+import { getUserBusySlots } from "@/lib/calendar-busy";
 import { z } from "zod";
 
 export const maxDuration = 60;
@@ -100,6 +101,8 @@ export async function POST(
       orderBy: { orderIndex: "asc" },
     });
 
+    const busySlots = await getUserBusySlots(userId, new Date(), examDate);
+
     const generated = generateSchedule(
       topics.map((t) => ({
         id: t.id,
@@ -113,8 +116,10 @@ export async function POST(
         dailyStudyHours: data.dailyStudyHours,
         studyDays,
         studyTimeStart: data.studyTimeStart,
+        studyTimeEnd: data.studyTimeEnd,
         examFormat: data.examFormat,
         planningMode: data.planningMode,
+        busySlots,
       }
     );
 

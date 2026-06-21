@@ -29,6 +29,18 @@ export interface ScheduleTask {
   exam: { id: string; title: string; color: string };
 }
 
+export interface ExternalCalendarEventView {
+  id: string;
+  title: string;
+  date: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  allDay: boolean;
+  source: string;
+}
+
+const YANDEX_COLOR = "#fc3f1d";
+
 const HOUR_START = 7;
 const HOUR_END = 22;
 const HOUR_HEIGHT = 52;
@@ -49,6 +61,45 @@ function taskHeight(duration: number): number {
 
 const hours = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);
 
+function ExternalEventBlock({ event }: { event: ExternalCalendarEventView }) {
+  if (event.allDay) return null;
+
+  const start = parseTimeToMinutes(event.startTime);
+  const end = parseTimeToMinutes(event.endTime);
+  const duration = Math.max(end - start, 30);
+  const top = minutesToTop(start);
+  const height = taskHeight(duration);
+
+  if (top < 0 || start >= HOUR_END * 60) return null;
+
+  return (
+    <div
+      className={`absolute left-0.5 right-0.5 z-[5] overflow-hidden rounded-lg border px-1.5 py-1 shadow-sm ${
+        event.source === "PHOTO"
+          ? "border-amber-200 bg-amber-50/90"
+          : "border-red-100 bg-red-50/90"
+      }`}
+      style={{
+        top,
+        height,
+        borderLeftColor: event.source === "PHOTO" ? "#d97706" : YANDEX_COLOR,
+        borderLeftWidth: 3,
+      }}
+      title={`${event.source === "PHOTO" ? "С фото" : "Яндекс"}: ${event.title}`}
+    >
+      <p
+        className={`truncate text-[11px] font-semibold leading-tight ${
+          event.source === "PHOTO" ? "text-amber-800" : "text-red-700"
+        }`}
+      >
+        {event.startTime} {event.title}
+      </p>
+      <p className={`truncate text-[10px] ${event.source === "PHOTO" ? "text-amber-600" : "text-red-500"}`}>
+        {event.source === "PHOTO" ? "Импорт с фото" : "Яндекс Календарь"}
+      </p>
+    </div>
+  );
+}
 function TaskBlock({
   task,
   onStatusChange,
@@ -88,16 +139,21 @@ function TaskBlock({
 function TimeGrid({
   days,
   tasks,
+  externalEvents = [],
   onStatusChange,
 }: {
   days: Date[];
   tasks: ScheduleTask[];
+  externalEvents?: ExternalCalendarEventView[];
   onStatusChange?: (id: string, status: string) => void;
 }) {
   const gridHeight = (HOUR_END - HOUR_START + 1) * HOUR_HEIGHT;
 
   const tasksByDay = days.map((day) =>
     tasks.filter((t) => isSameDay(parseISO(t.date.split("T")[0]), day))
+  );
+  const externalByDay = days.map((day) =>
+    externalEvents.filter((e) => isSameDay(parseISO(e.date.split("T")[0]), day))
   );
 
   return (
@@ -155,6 +211,9 @@ function TimeGrid({
                 style={{ top: i * HOUR_HEIGHT, height: HOUR_HEIGHT }}
               />
             ))}
+            {externalByDay[dayIdx].map((event) => (
+              <ExternalEventBlock key={event.id} event={event} />
+            ))}
             {tasksByDay[dayIdx].map((task) => (
               <TaskBlock key={task.id} task={task} onStatusChange={onStatusChange} compact />
             ))}
@@ -168,17 +227,24 @@ function TimeGrid({
 export function DayCalendarView({
   date,
   tasks,
+  externalEvents = [],
   onStatusChange,
 }: {
   date: Date;
   tasks: ScheduleTask[];
+  externalEvents?: ExternalCalendarEventView[];
   onStatusChange?: (id: string, status: string) => void;
 }) {
   const dayTasks = tasks.filter((t) => isSameDay(parseISO(t.date.split("T")[0]), date));
 
   return (
     <div className="space-y-4">
-      <TimeGrid days={[date]} tasks={tasks} onStatusChange={onStatusChange} />
+      <TimeGrid
+        days={[date]}
+        tasks={tasks}
+        externalEvents={externalEvents}
+        onStatusChange={onStatusChange}
+      />
       {dayTasks.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-slate-700">Список задач</h3>
@@ -194,26 +260,37 @@ export function DayCalendarView({
 export function WeekCalendarView({
   date,
   tasks,
+  externalEvents = [],
   onStatusChange,
 }: {
   date: Date;
   tasks: ScheduleTask[];
+  externalEvents?: ExternalCalendarEventView[];
   onStatusChange?: (id: string, status: string) => void;
 }) {
   const weekStart = startOfWeek(date, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(date, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  return <TimeGrid days={days} tasks={tasks} onStatusChange={onStatusChange} />;
+  return (
+    <TimeGrid
+      days={days}
+      tasks={tasks}
+      externalEvents={externalEvents}
+      onStatusChange={onStatusChange}
+    />
+  );
 }
 
 export function MonthCalendarView({
   date,
   tasks,
+  externalEvents = [],
   onStatusChange,
 }: {
   date: Date;
   tasks: ScheduleTask[];
+  externalEvents?: ExternalCalendarEventView[];
   onStatusChange?: (id: string, status: string) => void;
 }) {
   const monthStart = startOfMonth(date);
@@ -237,6 +314,7 @@ export function MonthCalendarView({
         {days.map((day) => {
           const key = format(day, "yyyy-MM-dd");
           const dayTasks = tasks.filter((t) => t.date.split("T")[0] === key);
+          const dayExternal = externalEvents.filter((e) => e.date.split("T")[0] === key);
           const inMonth = isSameMonth(day, date);
           const today = isToday(day);
 
@@ -258,6 +336,20 @@ export function MonthCalendarView({
                 {format(day, "d")}
               </p>
               <div className="space-y-0.5">
+                {dayExternal.slice(0, 2).map((event) => (
+                  <div
+                    key={event.id}
+                    className={`truncate rounded-md px-1 py-0.5 text-[10px] font-medium ${
+                      event.source === "PHOTO"
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-red-50 text-red-600"
+                    }`}
+                    title={event.title}
+                  >
+                    {event.allDay ? "весь день " : event.startTime ? `${event.startTime} ` : ""}
+                    {event.title}
+                  </div>
+                ))}
                 {dayTasks.slice(0, 3).map((task) => (
                   <div
                     key={task.id}
@@ -272,9 +364,9 @@ export function MonthCalendarView({
                     {task.title}
                   </div>
                 ))}
-                {dayTasks.length > 3 && (
+                {(dayTasks.length + dayExternal.length) > 3 && (
                   <p className="text-[10px] font-medium text-sky-500">
-                    Ещё {dayTasks.length - 3}
+                    Ещё {dayTasks.length + dayExternal.length - 3}
                   </p>
                 )}
               </div>

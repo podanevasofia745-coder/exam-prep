@@ -9,14 +9,17 @@ datasource db {
 }
 
 model User {
-  id           String      @id @default(cuid())
-  email        String      @unique
-  passwordHash String
-  name         String?
-  createdAt    DateTime    @default(now())
-  exams        Exam[]
-  studyTasks   StudyTask[]
-  schedules    Schedule[]
+  id               String                  @id @default(cuid())
+  email            String                  @unique
+  passwordHash     String
+  name             String?
+  calendarIcsUrl   String?
+  calendarSyncedAt DateTime?
+  createdAt        DateTime                @default(now())
+  exams            Exam[]
+  studyTasks       StudyTask[]
+  schedules        Schedule[]
+  calendarEvents   ExternalCalendarEvent[]
 }
 
 model Exam {
@@ -82,4 +85,21 @@ model Schedule {
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+}
+
+model ExternalCalendarEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  uid       String
+  title     String
+  startAt   DateTime
+  endAt     DateTime
+  allDay    Boolean  @default(false)
+  source    String   @default("YANDEX")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, uid])
+  @@index([userId, startAt])
 }

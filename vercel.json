@@ -6,6 +6,9 @@
     },
     "src/app/api/exams/[id]/setup-sync/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/schedule/import-image/route.ts": {
+      "maxDuration": 60
     }
   }
 }
