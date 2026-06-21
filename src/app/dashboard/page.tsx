@@ -35,9 +35,10 @@ export default function DashboardPage() {
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
 
   const loadExams = useCallback(async () => {
-    const res = await fetch("/api/exams");
+    const res = await fetch("/api/exams", { credentials: "include" });
     if (res.ok) {
       setExams(await res.json());
     }
@@ -50,12 +51,32 @@ export default function DashboardPage() {
 
   async function createExam() {
     setCreating(true);
-    const res = await fetch("/api/exams", { method: "POST" });
-    if (res.ok) {
-      const exam = await res.json();
-      router.push(`/exams/${exam.id}/setup`);
+    setError("");
+
+    try {
+      const res = await fetch("/api/exams", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        const exam = await res.json();
+        router.push(`/exams/${exam.id}/setup`);
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        setError("Сессия истекла. Войдите в аккаунт снова.");
+        router.push("/login");
+        return;
+      }
+      setError(data.error ?? "Не удалось создать экзамен. Попробуйте ещё раз.");
+    } catch {
+      setError("Ошибка сети. Проверьте подключение к интернету.");
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   }
 
   function getExamProgress(exam: Exam) {
@@ -92,6 +113,10 @@ export default function DashboardPage() {
           </Button>
         </div>
 
+        {error && (
+          <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
+        )}
+
         <div className="mt-8 grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <h2 className="mb-4 text-lg font-semibold text-slate-800">
@@ -111,9 +136,9 @@ export default function DashboardPage() {
                 <p className="mt-1 text-sm text-slate-500">
                   Создайте первый экзамен, чтобы начать подготовку
                 </p>
-                <Button className="mt-4" onClick={createExam}>
+                <Button className="mt-4" onClick={createExam} disabled={creating}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Создать экзамен
+                  {creating ? "Создание..." : "Создать экзамен"}
                 </Button>
               </Card>
             ) : (

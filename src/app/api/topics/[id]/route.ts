@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
@@ -14,11 +13,11 @@ const updateSchema = z.object({
 });
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = await getAuthUserId(request);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -33,7 +32,7 @@ export async function PATCH(
       include: { exam: true },
     });
 
-    if (!topic || topic.exam.userId !== session.user.id) {
+    if (!topic || topic.exam.userId !== userId) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
@@ -52,11 +51,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = await getAuthUserId(request);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -67,7 +66,7 @@ export async function DELETE(
     include: { exam: true },
   });
 
-  if (!topic || topic.exam.userId !== session.user.id) {
+  if (!topic || topic.exam.userId !== userId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

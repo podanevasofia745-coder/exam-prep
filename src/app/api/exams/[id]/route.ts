@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
@@ -18,18 +17,18 @@ const updateSchema = z.object({
 });
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = await getAuthUserId(request);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await params;
 
   const exam = await prisma.exam.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId },
     include: {
       topics: { orderBy: { orderIndex: "asc" } },
       studyTasks: { orderBy: [{ date: "asc" }, { startTime: "asc" }] },
@@ -44,11 +43,11 @@ export async function GET(
 }
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = await getAuthUserId(request);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -59,7 +58,7 @@ export async function PATCH(
     const data = updateSchema.parse(body);
 
     const exam = await prisma.exam.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId },
     });
 
     if (!exam) {
@@ -84,18 +83,18 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = await getAuthUserId(request);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await params;
 
   const exam = await prisma.exam.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId },
   });
 
   if (!exam) {

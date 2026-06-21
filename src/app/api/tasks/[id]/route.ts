@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { generateSchedule } from "@/lib/schedule-generator";
@@ -10,11 +9,11 @@ const updateSchema = z.object({
 });
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = await getAuthUserId(request);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -25,7 +24,7 @@ export async function PATCH(
     const data = updateSchema.parse(body);
 
     const task = await prisma.studyTask.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId },
       include: { exam: { include: { topics: true } }, topic: true },
     });
 
@@ -86,7 +85,7 @@ export async function PATCH(
             data: generated.map((g) => ({
               examId: exam.id,
               topicId: g.topicId,
-              userId: session.user!.id,
+              userId,
               date: g.date,
               startTime: g.startTime,
               endTime: g.endTime,

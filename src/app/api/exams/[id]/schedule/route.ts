@@ -1,22 +1,21 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { generateSchedule } from "@/lib/schedule-generator";
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = await getAuthUserId(request);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id: examId } = await params;
 
   const exam = await prisma.exam.findFirst({
-    where: { id: examId, userId: session.user.id },
+    where: { id: examId, userId },
     include: { topics: true },
   });
 
@@ -60,7 +59,7 @@ export async function POST(
         data: generated.map((task) => ({
           examId,
           topicId: task.topicId,
-          userId: session.user!.id,
+          userId,
           date: task.date,
           startTime: task.startTime,
           endTime: task.endTime,
@@ -84,7 +83,7 @@ export async function POST(
     } else {
       await tx.schedule.create({
         data: {
-          userId: session.user!.id,
+          userId,
           examId,
         },
       });

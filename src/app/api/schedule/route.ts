@@ -1,13 +1,12 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { startOfDay, endOfDay, addDays } from "date-fns";
 import { detectScheduleConflicts } from "@/lib/schedule-generator";
 
-export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+export async function GET(request: NextRequest) {
+  const userId = await getAuthUserId(request);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -32,7 +31,7 @@ export async function GET(request: Request) {
 
   const tasks = await prisma.studyTask.findMany({
     where: {
-      userId: session.user.id,
+      userId,
       date: { gte: start, lte: end },
     },
     include: {
