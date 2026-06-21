@@ -10,24 +10,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const archived = request.nextUrl.searchParams.get("archived") === "true";
+
   const exams = await prisma.exam.findMany({
-    where: { userId },
+    where: { userId, archived },
     include: {
       topics: true,
-      studyTasks: {
-        where: {
-          date: {
-            gte: new Date(new Date().setHours(0, 0, 0, 0)),
-            lte: addDays(new Date(new Date().setHours(0, 0, 0, 0)), 7),
+      ...(!archived && {
+        studyTasks: {
+          where: {
+            date: {
+              gte: new Date(new Date().setHours(0, 0, 0, 0)),
+              lte: addDays(new Date(new Date().setHours(0, 0, 0, 0)), 7),
+            },
+            status: "PLANNED",
           },
-          status: "PLANNED",
+          orderBy: { date: "asc" },
+          take: 5,
         },
-        orderBy: { date: "asc" },
-        take: 5,
-      },
+      }),
       _count: { select: { topics: true, studyTasks: true } },
     },
-    orderBy: { examDate: "asc" },
+    orderBy: archived ? { archivedAt: "desc" } : { examDate: "asc" },
   });
 
   return NextResponse.json(exams);

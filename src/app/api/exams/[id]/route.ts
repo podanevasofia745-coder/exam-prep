@@ -14,6 +14,7 @@ const updateSchema = z.object({
   studyDays: z.string().optional(),
   studyTimeStart: z.string().optional(),
   studyTimeEnd: z.string().optional(),
+  archived: z.boolean().optional(),
 });
 
 export async function GET(
@@ -70,6 +71,12 @@ export async function PATCH(
       data: {
         ...data,
         examDate: data.examDate ? new Date(data.examDate) : undefined,
+        archivedAt:
+          data.archived === true
+            ? new Date()
+            : data.archived === false
+              ? null
+              : undefined,
       },
     });
 

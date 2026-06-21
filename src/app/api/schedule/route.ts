@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
   const tasks = await prisma.studyTask.findMany({
     where: {
       userId,
+      exam: { archived: false },
       date: { gte: start, lte: end },
     },
     include: {
