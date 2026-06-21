@@ -145,8 +145,11 @@ export default function ExamSetupPage() {
 
     try {
       const allTickets: TopicDraft[] = [];
+      let importWarning = "";
+
       for (const file of Array.from(files)) {
-        const parsed = await parseTicketsFromFile(file);
+        const { tickets: parsed, warning } = await parseTicketsFromFile(file);
+        if (warning) importWarning = warning;
         for (const t of parsed) {
           allTickets.push({
             title: t.title,
@@ -175,12 +178,13 @@ export default function ExamSetupPage() {
       const result = await persistTopicsAndSchedule(allTickets);
 
       if (result.ok) {
-        setImportSuccess(
-          `Готово: ${allTickets.length} тем, ${result.taskCount} задач в расписании`
-        );
+        let msg = `Готово: ${result.topicCount ?? allTickets.length} тем, ${result.taskCount} задач в расписании`;
+        if (importWarning) msg += `. ${importWarning}`;
+        setImportSuccess(msg);
       } else {
         setImportError(result.error ?? "Не удалось создать расписание");
-        setImportSuccess(`Загружено тем: ${allTickets.length}`);
+        setImportSuccess(`Распознано тем: ${allTickets.length}`);
+        if (importWarning) setImportError(importWarning);
       }
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "Ошибка импорта");
@@ -211,7 +215,7 @@ export default function ExamSetupPage() {
 
   async function persistTopicsAndSchedule(
     topicList: TopicDraft[]
-  ): Promise<{ ok: boolean; error?: string; taskCount?: number }> {
+  ): Promise<{ ok: boolean; error?: string; taskCount?: number; topicCount?: number }> {
     if (!examDate || topicList.length === 0) {
       return { ok: false, error: "Укажите дату экзамена и добавьте темы" };
     }
@@ -240,8 +244,8 @@ export default function ExamSetupPage() {
           ).hoursPerDay
         : dailyStudyHours;
 
-    const patchRes = await fetch(`/api/exams/${id}`, {
-      method: "PATCH",
+    const syncRes = await fetch(`/api/exams/${id}/setup-sync`, {
+      method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -256,49 +260,24 @@ export default function ExamSetupPage() {
         studyDays: daysToSave,
         studyTimeStart,
         studyTimeEnd,
+        topics: topicList,
       }),
     });
 
-    if (!patchRes.ok) {
-      const data = await patchRes.json().catch(() => ({}));
-      return { ok: false, error: data.error ?? "Не удалось сохранить настройки" };
-    }
+    const syncData = await syncRes.json().catch(() => ({}));
 
-    const existingRes = await fetch(`/api/exams/${id}`, { credentials: "include" });
-    const existing = existingRes.ok ? await existingRes.json() : { topics: [] };
-
-    for (const old of existing.topics) {
-      await fetch(`/api/topics/${old.id}`, { method: "DELETE", credentials: "include" });
-    }
-
-    for (const topic of topicList) {
-      const res = await fetch(`/api/exams/${id}/topics`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(topic),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        return { ok: false, error: data.error ?? `Не удалось сохранить тему «${topic.title}»` };
-      }
-    }
-
-    const schedRes = await fetch(`/api/exams/${id}/schedule`, {
-      method: "POST",
-      credentials: "include",
-    });
-
-    const schedData = await schedRes.json().catch(() => ({}));
-
-    if (!schedRes.ok) {
+    if (!syncRes.ok) {
       return {
         ok: false,
-        error: schedData.error ?? "Не удалось создать расписание",
+        error: syncData.error ?? "Не удалось сохранить и создать расписание",
       };
     }
 
-    return { ok: true, taskCount: schedData.count ?? schedData.tasks?.length ?? 0 };
+    return {
+      ok: true,
+      taskCount: syncData.taskCount ?? 0,
+      topicCount: syncData.topicCount ?? topicList.length,
+    };
   }
 
   async function saveAndGenerate() {

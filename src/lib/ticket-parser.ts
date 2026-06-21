@@ -8,6 +8,7 @@ export interface ParsedTicket {
 export interface ParseTicketsResult {
   tickets: ParsedTicket[];
   skippedLines: number;
+  expectedMaxNumber?: number;
 }
 
 const SKIP_PATTERNS = [
@@ -18,173 +19,146 @@ const SKIP_PATTERNS = [
   /^(оглавление|содержание|приложение|литература|список литературы)$/i,
 ];
 
-const TICKET_START =
-  /^(?:билет|ticket|тема|вопрос)\s*[#№.]?\s*\d+/i;
-
 function shouldSkipLine(line: string): boolean {
   if (line.length < 2) return true;
   return SKIP_PATTERNS.some((p) => p.test(line));
 }
 
-function ticketKey(title: string, number?: number): string {
-  if (number !== undefined && !Number.isNaN(number)) return `n:${number}`;
-  return `t:${title.toLowerCase()}`;
-}
-
-function addTicket(
-  tickets: ParsedTicket[],
-  seen: Set<string>,
-  title: string,
-  number?: number
-): boolean {
-  const cleaned = title.replace(/^["«]|["»]$/g, "").replace(/\s+/g, " ").trim();
-  if (cleaned.length < 2 || shouldSkipLine(cleaned)) return false;
-
-  const key = ticketKey(cleaned, number);
-  if (seen.has(key)) return false;
-
-  seen.add(key);
-  tickets.push({ title: cleaned, number });
-  return true;
-}
-
-function tryParseNumberedLine(
-  line: string
-): { number?: number; title: string } | null {
-  const patterns: Array<{ regex: RegExp; numbered: boolean }> = [
-    { regex: /^(?:билет|ticket|тема|вопрос)\s*[#№.]?\s*(\d+)\s*[.:)\-–—]?\s*(.+)$/i, numbered: true },
-    { regex: /^(\d{1,3})[.)]\s*(.+)$/, numbered: true },
-    { regex: /^(\d{1,3})\s+[-–—]\s+(.+)$/, numbered: true },
-    { regex: /^№\s*(\d+)\s+(.+)$/i, numbered: true },
-    { regex: /^[•\-*]\s+(\d+)[.)]\s*(.+)$/, numbered: true },
-    { regex: /^[•\-*]\s+(.+)$/, numbered: false },
-  ];
-
-  for (const { regex, numbered } of patterns) {
-    const m = line.match(regex);
-    if (!m) continue;
-    if (numbered && m[2]) {
-      return { number: parseInt(m[1], 10), title: m[2].trim() };
-    }
-    if (!numbered && m[1]) {
-      return { title: m[1].trim() };
-    }
-  }
-
-  return null;
-}
-
-function isContinuationLine(line: string): boolean {
-  if (shouldSkipLine(line)) return false;
-  if (tryParseNumberedLine(line)) return false;
-  if (TICKET_START.test(line)) return false;
-  if (/^\d{1,3}[.)]/.test(line)) return false;
-  return line.length >= 3;
-}
-
-/**
- * Извлекает названия билетов/тем из текста.
- */
-export function parseTicketsFromText(text: string): ParsedTicket[] {
-  return parseTicketsFromTextDetailed(text).tickets;
-}
-
-export function parseTicketsFromTextDetailed(text: string): ParseTicketsResult {
-  const normalized = text
+function normalizeLines(text: string): string[] {
+  return text
     .replace(/\u00A0/g, " ")
     .replace(/\r/g, "\n")
-    .replace(/\t/g, " ");
-
-  const lines = normalized
+    .replace(/\t/g, " ")
     .split(/\n/)
     .map((l) => l.trim())
     .filter(Boolean);
+}
 
+function parseNumberedBlocks(lines: string[]): ParsedTicket[] {
   const tickets: ParsedTicket[] = [];
-  const seen = new Set<string>();
-  const usedLines = new Set<number>();
-  let skippedLines = 0;
+  let currentNum: number | null = null;
+  let currentTitle = "";
 
-  for (let i = 0; i < lines.length; i++) {
-    if (usedLines.has(i)) continue;
-    const line = lines[i];
-
-    if (line.includes(";") && !tryParseNumberedLine(line)) {
-      const parts = line.split(";").map((p) => p.trim()).filter(Boolean);
-      if (parts.length > 1) {
-        for (const part of parts) {
-          const sub = parseTicketsFromTextDetailed(part);
-          for (const t of sub.tickets) addTicket(tickets, seen, t.title, t.number);
-        }
-        usedLines.add(i);
-        continue;
-      }
+  const flush = () => {
+    const title = currentTitle.replace(/\s+/g, " ").trim();
+    if (currentNum !== null && title.length >= 2 && !shouldSkipLine(title)) {
+      tickets.push({ number: currentNum, title });
     }
+    currentNum = null;
+    currentTitle = "";
+  };
 
-    const ticketHeader = line.match(/^(?:билет|ticket|тема|вопрос)\s*[#№.]?\s*(\d+)\s*$/i);
-    if (ticketHeader && lines[i + 1] && !usedLines.has(i + 1)) {
-      if (addTicket(tickets, seen, lines[i + 1], parseInt(ticketHeader[1], 10))) {
-        usedLines.add(i);
-        usedLines.add(i + 1);
-        i++;
-        continue;
-      }
+  for (const line of lines) {
+    const patterns = [
+      /^(?:билет|ticket|тема|вопрос)\s*[#№.]?\s*(\d{1,3})\s*[.:)\-–—>]+\s*(.*)$/i,
+      /^(\d{1,3})\s*[.)>:=\-–—]+\s*(.*)$/,
+      /^№\s*(\d{1,3})\s+(.+)$/i,
+    ];
+
+    let matched = false;
+    for (const regex of patterns) {
+      const m = line.match(regex);
+      if (!m) continue;
+      flush();
+      currentNum = parseInt(m[1], 10);
+      currentTitle = (m[2] ?? "").trim();
+      matched = true;
+      break;
     }
+    if (matched) continue;
 
-    const onlyNumber = line.match(/^(\d{1,3})$/);
-    if (onlyNumber && lines[i + 1] && !usedLines.has(i + 1) && lines[i + 1].length > 2) {
-      if (addTicket(tickets, seen, lines[i + 1], parseInt(onlyNumber[1], 10))) {
-        usedLines.add(i);
-        usedLines.add(i + 1);
-        i++;
-        continue;
-      }
-    }
-
-    const parsed = tryParseNumberedLine(line);
-    if (parsed?.title) {
-      let title = parsed.title;
-      let j = i + 1;
-      while (j < lines.length && isContinuationLine(lines[j]) && !usedLines.has(j)) {
-        title += " " + lines[j];
-        usedLines.add(j);
-        j++;
-      }
-
-      if (addTicket(tickets, seen, title, parsed.number)) {
-        usedLines.add(i);
-        i = j - 1;
-        continue;
-      }
-    }
-  }
-
-  for (let i = 0; i < lines.length; i++) {
-    if (usedLines.has(i)) continue;
-    const line = lines[i];
-    if (shouldSkipLine(line)) {
-      skippedLines++;
+    const onlyNum = line.match(/^(\d{1,3})\s*[.)]?\s*$/);
+    if (onlyNum) {
+      flush();
+      currentNum = parseInt(onlyNum[1], 10);
+      currentTitle = "";
       continue;
     }
-    if (line.length >= 3 && line.length <= 300) {
-      if (addTicket(tickets, seen, line)) {
-        usedLines.add(i);
-      } else {
-        skippedLines++;
-      }
-    } else {
-      skippedLines++;
+
+    if (currentNum !== null) {
+      currentTitle += (currentTitle ? " " : "") + line;
     }
   }
 
-  const sorted = tickets.sort((a, b) => {
+  flush();
+  return tickets;
+}
+
+function dedupeByNumber(tickets: ParsedTicket[]): ParsedTicket[] {
+  const byNumber = new Map<number, ParsedTicket>();
+  const unnumbered: ParsedTicket[] = [];
+  const seenTitles = new Set<string>();
+
+  for (const t of tickets) {
+    const titleKey = t.title.toLowerCase();
+    if (t.number !== undefined) {
+      const existing = byNumber.get(t.number);
+      if (!existing || t.title.length > existing.title.length) {
+        byNumber.set(t.number, t);
+      }
+    } else if (!seenTitles.has(titleKey)) {
+      seenTitles.add(titleKey);
+      unnumbered.push(t);
+    }
+  }
+
+  return [...byNumber.values(), ...unnumbered].sort((a, b) => {
     if (a.number !== undefined && b.number !== undefined) return a.number - b.number;
     if (a.number !== undefined) return -1;
     if (b.number !== undefined) return 1;
     return 0;
   });
+}
 
-  return { tickets: sorted, skippedLines };
+export function parseTicketsFromText(text: string): ParsedTicket[] {
+  return parseTicketsFromTextDetailed(text).tickets;
+}
+
+export function parseTicketsFromTextDetailed(text: string): ParseTicketsResult {
+  const lines = normalizeLines(text);
+  const numbered = dedupeByNumber(parseNumberedBlocks(lines));
+
+  if (numbered.length >= 3) {
+    const maxNum = Math.max(...numbered.map((t) => t.number ?? 0));
+    return {
+      tickets: numbered,
+      skippedLines: 0,
+      expectedMaxNumber: maxNum > 0 ? maxNum : undefined,
+    };
+  }
+
+  const tickets: ParsedTicket[] = [];
+  const seen = new Set<string>();
+
+  const addTicket = (title: string, number?: number) => {
+    const cleaned = title.replace(/^["«]|["»]$/g, "").replace(/\s+/g, " ").trim();
+    if (cleaned.length < 2 || shouldSkipLine(cleaned)) return;
+    const key = number !== undefined ? `n:${number}` : `t:${cleaned.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    tickets.push({ title: cleaned, number });
+  };
+
+  let skippedLines = 0;
+  for (const line of lines) {
+    const m = line.match(/^(\d{1,3})[.)]\s*(.+)$/);
+    if (m) {
+      addTicket(m[2], parseInt(m[1], 10));
+    } else if (!shouldSkipLine(line) && line.length >= 3 && line.length <= 300) {
+      addTicket(line);
+    } else {
+      skippedLines++;
+    }
+  }
+
+  const result = dedupeByNumber(tickets);
+  const maxNum = Math.max(0, ...result.map((t) => t.number ?? 0));
+
+  return {
+    tickets: result,
+    skippedLines,
+    expectedMaxNumber: maxNum > 0 ? maxNum : undefined,
+  };
 }
 
 export async function readFileAsText(file: File): Promise<string> {
@@ -209,7 +183,9 @@ export async function extractTextFromImage(file: File): Promise<string> {
   }
 }
 
-async function parseDocumentViaApi(file: File): Promise<ParsedTicket[]> {
+async function parseDocumentViaApi(
+  file: File
+): Promise<{ tickets: ParsedTicket[]; warning?: string }> {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -225,7 +201,10 @@ async function parseDocumentViaApi(file: File): Promise<ParsedTicket[]> {
     throw new Error(data.error ?? "Не удалось обработать документ");
   }
 
-  return data.tickets as ParsedTicket[];
+  return {
+    tickets: data.tickets as ParsedTicket[],
+    warning: data.warning as string | undefined,
+  };
 }
 
 async function parseDocxClientSide(file: File): Promise<ParsedTicket[]> {
@@ -239,7 +218,9 @@ async function parseDocxClientSide(file: File): Promise<ParsedTicket[]> {
   return tickets;
 }
 
-export async function parseTicketsFromFile(file: File): Promise<ParsedTicket[]> {
+export async function parseTicketsFromFile(
+  file: File
+): Promise<{ tickets: ParsedTicket[]; warning?: string }> {
   const name = file.name.toLowerCase();
 
   if (isDocumentFile(file)) {
@@ -248,7 +229,8 @@ export async function parseTicketsFromFile(file: File): Promise<ParsedTicket[]> 
     } catch (apiError) {
       if (detectDocumentKind(file.name, file.type) === "docx") {
         try {
-          return await parseDocxClientSide(file);
+          const tickets = await parseDocxClientSide(file);
+          return { tickets };
         } catch {
           throw apiError;
         }
@@ -263,7 +245,7 @@ export async function parseTicketsFromFile(file: File): Promise<ParsedTicket[]> 
     if (tickets.length === 0) {
       throw new Error("На фото не найдены билеты. Попробуйте более чёткое изображение.");
     }
-    return tickets;
+    return { tickets };
   }
 
   if (
@@ -277,7 +259,7 @@ export async function parseTicketsFromFile(file: File): Promise<ParsedTicket[]> 
     if (tickets.length === 0) {
       throw new Error("В файле не найдены билеты");
     }
-    return tickets;
+    return { tickets };
   }
 
   throw new Error(

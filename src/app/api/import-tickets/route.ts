@@ -52,7 +52,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ tickets, count: tickets.length, skippedLines });
+    const expectedMaxNumber =
+      tickets.length > 0
+        ? Math.max(...tickets.map((t) => t.number ?? 0)) || undefined
+        : undefined;
+
+    const warning =
+      expectedMaxNumber && tickets.length < expectedMaxNumber
+        ? `Найдено ${tickets.length} из ${expectedMaxNumber} билетов. Попробуйте экспортировать документ как .txt`
+        : undefined;
+
+    return NextResponse.json({
+      tickets,
+      count: tickets.length,
+      skippedLines,
+      expectedMaxNumber,
+      warning,
+    });
   } catch (error) {
     console.error("Import tickets error:", error);
     const message =

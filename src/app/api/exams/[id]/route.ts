@@ -71,7 +71,11 @@ export async function PATCH(
       where: { id },
       data: {
         ...data,
-        examDate: data.examDate ? new Date(data.examDate) : undefined,
+        examDate: data.examDate
+          ? data.examDate.includes("T")
+            ? new Date(data.examDate)
+            : new Date(`${data.examDate}T12:00:00`)
+          : undefined,
         archivedAt:
           data.archived === true
             ? new Date()
